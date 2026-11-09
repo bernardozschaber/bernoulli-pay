@@ -9,7 +9,7 @@
 * Bernardo Zschaber Morato Nogueira - full
 * Lucas Ferreira Marinho - full
 
-## Objetivo do sistema (\~5 linhas):
+## Objetivo do sistema (~5 linhas):
 
 O BernoulliPay automatiza o controle de pagamentos via RPA (Recibo de Pagamento Autônomo) dos aplicadores de prova que prestam serviço freelancer para o Colégio Bernoulli. Hoje esse processo é feito manualmente em planilhas Excel separadas — uma de cadastro/agendamento dos aplicadores e outra de conferência de lançamentos, valores e unidades — o que é sujeito a erro e difícil de auditar. O sistema unifica esses dados em um banco único e em uma interface web interativa, permitindo importar ou lançar as atividades realizadas por aplicador, evento, data e unidade do colégio. A partir do valor líquido recebido em cada atividade, o sistema calcula automaticamente o valor bruto do RPA e os descontos de INSS, ISS e IR, além de consolidar o total a pagar por aplicador. O objetivo é dar mais confiabilidade, rastreabilidade e agilidade ao fechamento mensal de pagamentos, substituindo o fluxo atual baseado em planilhas.
 
@@ -18,14 +18,14 @@ O BernoulliPay automatiza o controle de pagamentos via RPA (Recibo de Pagamento 
 * Linguagem: Python 3.13
 * Frameworks: Django 5.2 (backend + API REST com Django REST Framework) e Django Templates + CSS e JavaScript puros (frontend web)
 * Leitura/escrita de planilhas: openpyxl
-* BD: PostgreSQL (via `DATABASE\\\_URL`); SQLite como fallback para desenvolvimento local
+* BD: SQLite (arquivo local `db.sqlite3`)
 * Agentes de IA (código): Claude Code (Fable 5.1), OpenAI Codex (GPT-5.6), Google Gemini (3.1 Pro)
 * IA generativa (identidade visual): **v0.app** — primeira rodada de conceitos de logo e a galeria
   de comparação; **geração de imagens do ChatGPT** — segunda rodada e os arquivos finais. O processo
   completo, com os briefings e o que foi descartado, está em [`DESIGN.md`](DESIGN.md), seção
   `## Identity`.
 
-## Histórias de usuários (\~8 histórias com 1-2 linhas por história):
+## Histórias de usuários (~8 histórias com 1-2 linhas por história):
 
 * História 1: Como administrador financeiro, quero cadastrar e manter os dados dos aplicadores (dados pessoais, bancários, curso e instituição) em um banco de dados único, para não depender mais de planilhas de agendamento espalhadas por unidade.
 * História 2: Como usuário do RH, quero importar listas de aplicação (arquivos .xlsx/.xlsm) com o nome do evento, a data e o valor líquido recebido por aplicador, para lançar rapidamente os serviços prestados em cada prova.
@@ -39,35 +39,42 @@ O BernoulliPay automatiza o controle de pagamentos via RPA (Recibo de Pagamento 
 ## Como executar
 
 ```bash
-python3 -m venv .venv \\\&\\\& source .venv/bin/activate ## para criar a variável de ambiente do banco // para ativar o banco
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py seed               # dados de referência (unidades, setores, alíquotas) e usuário admin/admin
-python manage.py seed_team          # equipe de aplicação de provas, com foto, cargo e contato
+python manage.py seed_team          # equipe com foto, cargo, PIN e permissões de acesso
+python manage.py seed_demo          # opcional: operação fictícia para explorar o sistema
 python manage.py runserver
 ```
 
 Acesse http://127.0.0.1:8000 e entre com `admin` / `admin`.
 
-### Subindo o live server com o `.venv` já criado
+### Dados de demonstração
 
-Sequência exata usada para colocar o servidor de desenvolvimento no ar quando o
-ambiente virtual já existe (chamando o Python do `.venv` direto, sem `activate`):
+`seed_demo` enche o banco com uma operação inteira de mentira, para quem abre o
+sistema pela primeira vez não encontrar as telas vazias: 32 aplicadores com
+ficha completa, cerca de 320 lançamentos espalhados pelas quinzenas fechadas dos
+últimos seis meses, nas quatro unidades, nos seis setores solicitantes e nas três
+funções (aplicador, orientador, volante). Assim o painel tem série histórica, o
+Resumo tem treze quinzenas para comparar e os filtros de unidade, setor e período
+mudam de resposta.
+
+Nada ali é de ninguém: os nomes são combinações sorteadas, e CPF, banco e PIX são
+inventados (o CPF sai com dígito verificador válido só para não ser recusado numa
+conferência). O sorteio é determinístico, então o comando produz os mesmos números
+em qualquer máquina.
 
 ```bash
-cd /home/brnrdzschbr/Debian/prova-pay
-.venv/bin/python manage.py migrate --noinput
-.venv/bin/python manage.py check
-.venv/bin/python manage.py runserver 0.0.0.0:8000
+python manage.py seed_demo                    # recusa se já houver dados
+python manage.py seed_demo --reset            # apaga o que existe e recria
+python manage.py seed_demo --applicators 60   # equipe maior
 ```
 
-O `0.0.0.0` faz o servidor responder também pelo IP da máquina, o que é útil no
-WSL. Para conferir que subiu, de outro terminal:
-
-```bash
-curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8000/        # 302 (redireciona para o login)
-curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8000/login/  # 200
-```
+Seis aplicadores só aparecem na última quinzena, e continuam marcados como
+*cadastro novo: primeiro pagamento* — é o estado que o financeiro precisa
+conferir na lista. Cada atividade é gravada com um lote de importação, para a
+coluna de origem do lançamento não ficar vazia.
 
 As planilhas importadas são guardadas em `media/imports/AAAA/MM/` (fora de
 `static/`, e servidas só pela view autenticada `imports:batch_download`). O
@@ -130,26 +137,30 @@ usuário a seguir: X?”. Só o “sim” dessa última cria o cadastro, marcado
 primeiro pagamento; o “não” deixa as linhas daquele nome de fora do lote.
 
 `seed_team` cria os logins da equipe. A senha de cada pessoa é o PIN de quatro
-dígitos no fim do próprio telefone:
+dígitos no fim do próprio telefone, e cada cargo só vê as abas da própria função —
+"Início" é a única exceção, aberta a todos. Não é só o menu que esconde: uma
+tentativa de acessar a URL de outra área direto é barrada do mesmo jeito
+(`apps/core/access.py`, `apps/core/middleware.py`).
 
-| Login | Pessoa | Cargo | PIN |
-|---|---|---|---|
-| `jessica.moreira` | Jessica Souza Moreira | ♾️ Supervisor - Aplicação de Prova | `2433` |
-| `fernanda` | Fernanda | Aplicação de Provas (Vale do Sereno) | `1387` |
-| `felipe` | Felipe | Aplicação de Provas (Lourdes) | `5424` |
-| `ana.julia` | Ana Júlia | Aplicação de Provas (Cidade Jardim) | `0089` |
-| `suzana.godoy` | Suzana Godoy | Coordenadora de Operações | `3608` |
+| Login | Pessoa | Cargo | PIN | Abas visíveis |
+|---|---|---|---|---|
+| `admin` | Bernardo Zschaber | Administrador do sistema | `admin` | todas |
+| `jessica.moreira` | Jessica Souza Moreira | ♾️ Supervisor - Aplicação | `2433` | todas |
+| `suzana.godoy` | Suzana Godoy | Coordenadora de Operações | `3608` | todas |
+| `fernanda.rezende` | Fernanda Rezende | Gestor financeiro | `1387` | Lançamentos, Resumo, Configurações |
+| `felipe.oliveira` | Felipe Oliveira | Usuário do RH | `5424` | Importar |
+| `ana.julia` | Ana Júlia | Administrador financeiro | `0089` | Aplicadores |
 
-Para usar PostgreSQL, suba o banco com `docker compose up -d` e exporte
-`DATABASE\\\_URL=postgres://bernoullipay:bernoullipay@localhost:5432/bernoullipay` antes de rodar
-`migrate` (ver `.env.example`). Sem a variável o projeto usa `db.sqlite3`.
+Administrador financeiro, Usuário do RH e Gestor financeiro são os três papéis
+das histórias de usuário acima; admin, Jessica e Suzana têm acesso total por
+serem operação/administração do sistema, não personas do produto.
 
-> **Vindo de uma versão anterior?** O banco, o usuário e o volume do Postgres foram
-> renomeados de `provapay` para `bernoullipay` junto com o rebranding. O Postgres só cria
-> o usuário e o banco quando o diretório de dados está vazio, então o volume também mudou
-> de nome (`bernoullipay_pgdata`) — assim um `docker compose up -d` já sobe limpo, sem erro
-> de autenticação. O volume antigo não é apagado, apenas fica órfão: remova com
-> `docker volume rm pgdata` quando tiver certeza de que não precisa mais dele.
+"Configurações" (a engrenagem no rodapé do menu, onde ficam as alíquotas e os
+setores) é a única área fora do menu principal e segue a mesma regra: só quem
+tem acesso total e a Fernanda (Gestor financeiro) veem o ícone ou conseguem
+abrir `/configuracoes/` direto pela URL.
+
+O banco é sempre `db.sqlite3`, criado no `migrate`; não há outra opção configurável.
 
 ## Testes e medições
 
