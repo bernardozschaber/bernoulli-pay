@@ -99,21 +99,20 @@ dez anos a coorte continua com ~2.000 lançamentos e esses números se mantêm.
 
 ### 1.7 Decisão sobre o banco
 
-**PostgreSQL**, com SQLite como fallback local (`DATABASE_URL` ausente). A escolha
-não se justifica por desempenho de consulta — o benchmark acima mostra que, nesse
-volume, as consultas não são o problema. Justifica-se por **durabilidade**: backup,
-recuperação *point-in-time* e concorrência real de escrita durante o fechamento,
-num sistema que deve durar anos. O nome do banco, usuário e volume foram alinhados
-à marca (`bernoullipay`).
+**SQLite**, único banco suportado — não é mais configurável por variável de ambiente.
+O benchmark acima mostra que, no volume real da operação (~2.000 lançamentos por
+coorte), consulta não é o gargalo nem em dez anos de histórico acumulado; um serviço
+de banco à parte (Postgres) adicionava operação (subir, migrar, fazer backup de um
+processo separado) sem resolver problema nenhum que este sistema realmente tem.
 
 ### 1.8 Como reproduzir
 
 ```bash
-# banco descartável, sem tocar no db.sqlite3
-export BENCH=/tmp/bench.sqlite3 && rm -f $BENCH
-DATABASE_URL="sqlite:///$BENCH" python manage.py migrate
-DATABASE_URL="sqlite:///$BENCH" python manage.py seed
+# banco descartável, sem tocar no db.sqlite3 de verdade
+cp db.sqlite3 /tmp/db.sqlite3.bak 2>/dev/null
+rm -f db.sqlite3 && python manage.py migrate && python manage.py seed
 # popular com bulk_create e medir com django.test.Client + tracemalloc
+mv /tmp/db.sqlite3.bak db.sqlite3 2>/dev/null  # restaura o banco de desenvolvimento
 ```
 
 ### 1.9 O que continua em aberto
@@ -273,13 +272,11 @@ Declarado explicitamente para que ninguém confie mais do que deve:
 - **Nenhum JavaScript foi executado.** Não há runtime JS na máquina de
   desenvolvimento usada (sem node/deno/bun). As mudanças em `app.js`, `chart.js`,
   `upload.js` e `preview.js` foram revisadas e têm parênteses/chaves balanceados,
-  mas **não foram executadas**.
+  mas **não foram executadas**. Desde então o CI confere a sintaxe com
+  `node --check`, o que ainda não é executar.
 - **Nenhuma página foi renderizada em navegador.** Não havia driver de automação
   disponível. Os achados de responsividade e de alvo de toque vêm de análise estática
   do CSS, não de viewport renderizado nem de gesto de toque sintetizado.
-- **O `docker compose up -d` não foi executado** — não há daemon Docker na máquina.
-  A configuração do Postgres foi validada por parsing de `DATABASE_URL` e por
-  comparação estrutural com a versão anterior, não por execução.
 
 Recomendação: abrir a aplicação e percorrer o fluxo de importação, a gaveta lateral
 e o export antes da apresentação.
@@ -454,22 +451,46 @@ transação; ela não é o que sustenta a garantia.
 
 ### 4.1 O que existe
 
-**21 testes**, em `apps/payroll/tests.py`, `apps/imports/tests.py` e
-`apps/core/tests.py`.
+**79 testes**, nos `tests.py` de `payroll`, `imports`, `applicators` e `core`
+e nos módulos `test_calculator.py`, `test_schedule.py` e
+`test_query_budget.py` de `apps/payroll`. O
+GitHub Actions roda a suíte, o ruff e um `node --check` dos arquivos JS a cada
+push na `main` e em todo pull request (`.github/workflows/ci.yml`).
 
 | Classe | Testes | Cobre |
 |---|---:|---|
 | `DuplicateEntryTests` | 13 | A regra de unicidade nas três camadas, e o que **não** é duplicata |
 | `ShiftColumnTests` | 3 | A coluna de turno na lista, via `django.test.Client` |
-| `ImportDoesNotDuplicateTests` | 4 | A importação de ponta a ponta, sobre as planilhas reais |
+| `ComputeBreakdownTests`, `TaxRatesTests`, `ConsistencyTests` | 10 | O bruto do RPA, INSS, ISS e IR a partir do líquido, o arredondamento e a conferência de R$ 1 |
+| `PaymentDateTests`, `FortnightLabelTests` | 8 | A regra dia 5 / dia 20, a virada de ano e o título de cada quinzena no export |
+| `QueryBudgetTests` | 1 | Lista, Resumo e export fazem o mesmo número de consultas com 3x o histórico |
+| `ImportDoesNotDuplicateTests` | 4 | A importação de ponta a ponta, sobre a pasta reconstruída |
+| `NoiseCellTests` | 5 | Células de ruído da planilha que não podem virar aplicador |
+| `ApplicatorLookupTests`, `NormalizeNameTests`, `SamePersonHeuristicsTests`, `DedupeNamesCommandTests` | 17 | Como um nome digitado de dois jeitos é reconhecido como a mesma pessoa |
+| `WhatsappNumberTests` | 5 | A normalização do telefone para o link do WhatsApp |
+| `SectionAccessMiddlewareTests`, `SectionForViewTests`, `AllowedSectionsTests`, `SeedTeamRenameTests` | 12 | O acesso por cargo, aplicado no servidor e não só no menu |
 | `TemplateCommentTests` | 1 | Varre todos os templates atrás de `{# … #}` em mais de uma linha |
 
-Os testes de importação **não usam fixtures sintéticas**: leem os oito arquivos
-de `01-09 oficina e pbb/` e os passam por `stage_uploads → enrich_preview →
-confirm_import`, o mesmo caminho da tela. O teste `test_the_stale_tab_of_the_next_week_does_not_pay_08_09_again` reproduz o
-defeito relatado com o arquivo que o causou, e
+`FortnightLabelTests` nasceu de um defeito: `fortnight_label` montava o rótulo
+e não o retornava, então todo bloco do Resumo exportado saía com título `None`.
+O ruff pega esse tipo de erro (variável atribuída e nunca usada) desde que
+entrou no CI.
+
+Os testes de importação passam pelo caminho inteiro da tela —
+`stage_uploads → enrich_preview → confirm_import` — sobre planilhas `.xlsx` de
+verdade, geradas em memória no layout "Relatório de Atividade". Elas
+reconstroem a pasta `01-09 oficina e pbb/` onde o defeito apareceu: a mesma
+sequência de listas, as mesmas abas de oficina repetidas com a data da semana
+anterior, nomes inventados no lugar dos reais. A pasta original não entra no
+repositório porque é lista de pagamento com dados pessoais, e o que está sob
+teste é a regra, não quem estava na lista. O teste
+`test_the_stale_tab_of_the_next_week_does_not_pay_08_09_again` reproduz o
+defeito relatado, e
 `test_nobody_is_paid_twice_for_the_same_shift_across_the_whole_folder` importa a
 pasta inteira na ordem em que a operação a enviaria.
+
+A reconstrução foi conferida por mutação: desligar a checagem de duplicata de
+`confirm_import` quebra exatamente os três testes que existem para pegá-la.
 
 `TemplateCommentTests` é de outra natureza: não cobre uma tela, varre o
 repositório. `{# … #}` só comenta uma linha — escrito em duas, o Django não o
@@ -489,10 +510,11 @@ apressada estragaria pagamento:
 ### 4.2 Como rodar
 
 ```bash
-python manage.py test              # a suíte inteira, ~2,5s
-python manage.py test apps.payroll # só a regra de unicidade e a coluna
-python manage.py test apps.imports # só a importação (lê as planilhas reais)
-python manage.py test apps.core    # só a varredura dos templates
+python manage.py test              # a suíte inteira, ~20-30s
+python manage.py test apps.payroll # unicidade, coluna de turno, calculadora e calendário
+python manage.py test apps.imports # só a importação (planilhas geradas em memória)
+python manage.py test apps.core    # acesso por cargo e a varredura dos templates
+ruff check .                       # o lint do CI (pip install -r requirements-dev.txt)
 python manage.py test -v2          # com o nome e a docstring de cada teste
 ```
 
@@ -515,9 +537,11 @@ Para que o TP2 continue no mesmo padrão:
    Um teste sem origem é apagado no primeiro refactor por parecer arbitrário.
 5. **Para cada regra que barra algo, um teste do que ela deve deixar passar.**
    Uma regra só de "não" passa verde impedindo o sistema inteiro.
-6. **Dados reais quando existirem.** As planilhas do repositório já contêm os
+6. **O formato dos dados reais, nunca as pessoas.** As planilhas reais têm os
    casos difíceis — abas ocultas, nomes escritos de dois jeitos, datas velhas —
-   que ninguém inventaria numa fixture.
+   que ninguém inventaria numa fixture, mas são listas de pagamento com dados
+   pessoais e não entram no repositório. O teste reconstrói a planilha em
+   memória com o mesmo layout e os mesmos defeitos, e nomes inventados.
 7. **Testar pela borda de fora.** `django.test.Client` e as funções de serviço,
    não os métodos privados: o que quebra o fechamento é a tela e a importação.
 
@@ -527,17 +551,18 @@ Em ordem de risco para o fechamento de pagamento:
 
 | # | Área | O que garantir | Por quê |
 |---|---|---|---|
-| 1 | `payroll/calculator.py` | Bruto, INSS, ISS e IR a partir do líquido, conferidos contra as linhas da planilha de controle | É o cálculo que o sistema existe para fazer, e não tem um único teste |
-| 2 | `payroll/schedule.py` | A regra dia 5 / dia 20 nas viradas de mês e ano | Um erro aqui joga pagamento para o ciclo errado |
+| 1 | `payroll/calculator.py` | Conferir os casos de 4.1 contra linhas da planilha de controle, não só contra valores calculados à mão | Os testes atuais garantem a fórmula; falta provar que ela bate com o que o financeiro pagava |
+| 2 | ~~`payroll/schedule.py`~~ | Coberto em `test_schedule.py` | — |
 | 3 | `imports/parser.py` | Os dois layouts, abas ocultas ignoradas, data por extenso e curta, valor com `R$` e vírgula | O parser é a porta de entrada de todo dado do sistema |
 | 4 | `imports/services.py` | `merge_questions` e `creation_questions`: nomes parecidos, correntes de junção, resposta ausente | Decide se duas grafias são uma pessoa ou duas — erra e paga em dobro por outro caminho |
-| 5 | `payroll/summary.py` e `export.py` | Totais do resumo iguais à soma dos lançamentos; o workbook abre e tem as abas esperadas | É o número que vai para a contabilidade |
+| 5 | `payroll/summary.py` e `export.py` | Totais do resumo iguais à soma dos lançamentos; o workbook abre e tem as abas esperadas | É o número que vai para a contabilidade — e o título `None` em todo bloco passou sem nenhum teste notar |
 | 6 | `payroll/filters.py` | Cada filtro isolado e combinado, incluindo `inconsistent_only` | Filtro errado mostra fechamento incompleto sem avisar |
-| 7 | Desempenho | `assertNumQueries` nos tetos medidos na seção 1 | Transforma a medição de 1.5 em regressão detectável |
+| 7 | ~~Desempenho~~ | Coberto em `test_query_budget.py`: tirar o `select_related` de `filters.py` quebra as três telas | — |
 | 8 | Acesso | Toda rota exige login; exclusão de lote exige `POST` | Hoje só o `@login_required` no código garante isso; nada verifica que ele continua lá |
 
 Duas lacunas de infraestrutura, herdadas da seção 2.10 e ainda abertas: **nenhum
-teste executa JavaScript** e **nenhum renderiza página em navegador** — não há
-runtime JS nem driver de automação na máquina de desenvolvimento. `ShiftColumnTests`
+teste executa JavaScript** e **nenhum renderiza página em navegador**. O CI já
+roda `node --check` em `static/js/`, o que barra erro de sintaxe mas não erro de
+comportamento; o próximo passo é Playwright no mesmo workflow. `ShiftColumnTests`
 inspeciona o HTML que o Django produz, o que é diferente de ver a página.
 Cobrir `upload.js` e `preview.js` no TP2 exige resolver isso primeiro.
