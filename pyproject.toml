@@ -24,5 +24,6 @@ branch = true
 omit = ["*/migrations/*", "*/tests.py", "*/test_*.py", "*/apps.py", "*/admin.py"]
 
 [tool.coverage.report]
+fail_under = 80
 show_missing = true
 skip_empty = true
