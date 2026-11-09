@@ -2,29 +2,79 @@
 
 O caso real que gerou estes testes: a operação monta a lista da semana copiando
 a da semana anterior, e alguma aba fica com a data antiga. As planilhas de
-14/09 e 15/09 de 2026 ainda trazem, nas abas de oficina, "08 de Setembro de
+14/09 e 15/09 de 2026 ainda traziam, nas abas de oficina, "08 de Setembro de
 2026" — as mesmas pessoas, o mesmo turno, os mesmos valores da planilha de
 08/09. Importadas em sequência, cada uma lançava tudo de novo e o resumo pagava
 a mesma oficina duas e três vezes.
 
-Os testes rodam sobre os arquivos de verdade, em `01-09 oficina e pbb/`.
+As planilhas de onde o caso saiu não entram no repositório: são listas de
+pagamento reais, com nome e valor de gente de verdade. `SAMPLE_FILES` reconstrói
+a mesma pasta — o mesmo layout "Relatório de Atividade", a mesma sequência de
+listas e as mesmas abas com data velha — com nomes inventados, montada em
+memória a cada teste. O que os testes verificam é a regra, e a regra não depende
+de quais pessoas estavam na lista.
 """
 import shutil
 import tempfile
 from decimal import Decimal
-from pathlib import Path
+from io import BytesIO
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+from openpyxl import Workbook
 
 from apps.catalog.models import PayingCompany, Sector, TaxSettings, Unit
 from apps.imports.services import all_questions, confirm_import, enrich_preview, load_preview, stage_uploads
+from apps.imports.views import _cell_text, _is_noise_cell
 from apps.payroll.models import ServiceEntry
 
-SAMPLES = Path(__file__).resolve().parents[2] / "01-09 oficina e pbb"
 OFICINAS_08_09 = "08-09 Reaplicação e Oficinas.xlsx"
 OFICINAS_14_09 = "14-09 Reaplicação e Simulados.xlsx"
+
+NAMES = [
+    "Alice Ferreira Duarte", "Bruno Castro Lima", "Camila Rocha Nunes",
+    "Diego Almeida Prado", "Elisa Moura Tavares", "Felipe Gomes Barbosa",
+    "Gabriela Santos Reis", "Henrique Vieira Lopes", "Igor Martins Costa",
+    "Julia Pereira Mendes", "Karina Bastos Freitas", "Lucas Andrade Pinto",
+    "Marina Coelho Ramos", "Nelson Batista Teles", "Olivia Cardoso Braga",
+    "Pedro Henrique Sales", "Renata Lima Figueiredo", "Sergio Antunes Mota",
+]
+
+OFICINA = "Oficina de Redação"
+DATE_08_09, DATE_14_09, DATE_15_09, DATE_01_09 = (
+    "08 de Setembro de 2026", "14 de Setembro de 2026",
+    "15 de Setembro de 2026", "01 de Setembro de 2026",
+)
+
+# As abas de oficina de 08/09: são elas que reaparecem, idênticas, nas listas das
+# semanas seguintes — o erro de digitação que os testes reproduzem.
+OFICINA_MANHA_08_09 = ("OFICINA MANHÃ", OFICINA, DATE_08_09, "Manhã", NAMES[:10])
+OFICINA_TARDE_08_09 = ("OFICINA TARDE", OFICINA, DATE_08_09, "Tarde", NAMES[4:14])
+
+# {nome do arquivo: [(aba, evento, data, turno, pessoas)]}, na ordem em que a
+# operação envia as listas.
+SAMPLE_FILES = {
+    "01-09 Oficinas.xlsx": [
+        ("OFICINA MANHÃ", OFICINA, DATE_01_09, "Manhã", NAMES[:14]),
+        ("OFICINA TARDE", OFICINA, DATE_01_09, "Tarde", NAMES[4:18]),
+    ],
+    OFICINAS_08_09: [
+        ("REAPLICAÇÃO", "Reaplicação de Provas", DATE_08_09, "Manhã", NAMES[2:16]),
+        OFICINA_MANHA_08_09,
+        OFICINA_TARDE_08_09,
+    ],
+    OFICINAS_14_09: [
+        ("SIMULADO", "Simulado ENEM", DATE_14_09, "Manhã", NAMES[:14]),
+        OFICINA_MANHA_08_09,  # a aba que ficou com a data da semana anterior
+        ("REAPLICAÇÃO", "Reaplicação de Provas", DATE_14_09, "Tarde", NAMES[4:16]),
+    ],
+    "15-09 PBB.xlsx": [
+        ("PBB", "Prova Bernoulli Bolsas", DATE_15_09, "Manhã", NAMES),
+        OFICINA_TARDE_08_09,  # idem, na lista do dia seguinte
+    ],
+}
+
 
 
 class FakeSession(dict):
