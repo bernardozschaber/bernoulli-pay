@@ -72,7 +72,7 @@ LISTING_COLUMNS = [
     Column("DATA PAGAMENTO", 11.77734375, CALIBRI_10, MIDDLE, DATE),
     Column("EMPRESA PAGADORA", 17.44140625, CALIBRI_LIGHT_10, MIDDLE),
     Column("OBSERVAÇÕES", 56.88671875, CALIBRI_LIGHT_10, CENTER),
-]
+    ]
 LISTING_HEADER_HEIGHT = 41.4
 LISTING_ROW_HEIGHT = 14.4
 
@@ -100,7 +100,6 @@ def _apply_widths(sheet: Worksheet, columns: list[Column]) -> None:
     for index, column in enumerate(columns, start=1):
         sheet.column_dimensions[get_column_letter(index)].width = column.width
 
-
 def _write_header(sheet: Worksheet, row: int, columns: list[Column], font: Font, height: float) -> None:
     sheet.row_dimensions[row].height = height
     for index, column in enumerate(columns, start=1):
@@ -121,7 +120,6 @@ def _write_row(sheet: Worksheet, row: int, columns: list[Column], values: list, 
         cell.number_format = column.number_format
         cell.fill = PatternFill("solid", fgColor=WHITE)
         cell.border = BOX
-
 
 def _build_listing(sheet: Worksheet, entries) -> None:
     sheet.sheet_view.zoomScale = 70
@@ -221,7 +219,6 @@ def _build_summary(sheet: Worksheet, groups: list[SummaryGroup]) -> None:
             row += 1
         _write_total(sheet, row, group)
         row += 2  # the blank line that separates two blocks
-
 
 def build_workbook(entries, groups: list[SummaryGroup]) -> bytes:
     workbook = Workbook()
