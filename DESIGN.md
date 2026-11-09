@@ -237,8 +237,8 @@ The personality is administrative rather than expressive, and the brand is appli
 deliberate restraint: it appears in six places and nowhere else. The logomark, the active
 navigation indicator, the trend chart's stroke and gradient, positive badges and alerts,
 legend and status dots, and links. Everything else is grey. Density is high and
-unapologetically desktop-first — an 84px icon rail, a 280px totals sidebar, and a single
-full-height white card holding the work. Depth is almost entirely absent: a one-pixel
+unapologetically desktop-first — a 240px nav rail (200px from 1024px down, icon-only at
+64px below 480px) and a single full-height white card holding the work. Depth is almost entirely absent: a one-pixel
 alpha-black hairline plus a barely-there shadow is the whole elevation vocabulary, so
 hierarchy comes from tonal steps (page grey → card white → inset grey) and from typographic
 weight, not from lifting things off the page.
@@ -251,12 +251,15 @@ teal at the rebrand and why links, success text and positive badge ink all land 
 rather than the 500.
 
 **Key Characteristics:**
-- Light-only; `color-scheme: light` is declared and no dark theme exists.
+- Two themes, one identity: light is the default `:root`; `[data-theme="dark"]` re-points the
+  same semantic names rather than introducing a second vocabulary. Verde Bernoulli is lifted
+  (`#00b8a5`) to hold its own on a dark ground; nothing else about the system's logic changes.
 - Neutral greys carry the whole interface; verde Bernoulli is the only identity colour.
 - The brand is a fill/stroke/mark; brand *text* is always the darker 700 step.
 - Flat by default — hairline borders and 1px/6%-black shadows, never lifted panels.
 - Money and counts are monospaced and tabular-aligned; prose is not.
-- Desktop-first density: three fixed columns, breaking to a drawer below 1024px.
+- Desktop-first density: nav rail plus one content column, the rail narrowing in place —
+  never a drawer — down to a phone width.
 - Every icon is inline Lucide SVG rendered by a template tag; there is no icon font and no
   Unicode glyph stands in for one.
 
@@ -343,8 +346,8 @@ A final pass then asked for the mark **without** the words "BernoulliPay". That 
 is why the system has two lockups instead of one, and therefore why the icon rail and the login
 card can differ at all — see **The two lockups**, below.
 
-The two outputs of that round are what ship: `bernoulli-pay-logo-mais-texto.png` and
-`bernoulli-pay-logo-apenas.png`.
+The two outputs of that round are what ship: `logos/bernoulli-pay-logo-mais-texto.png` and
+`logos/bernoulli-pay-logo-apenas.png`.
 
 ### What the mark resolves to
 
@@ -369,8 +372,9 @@ function follows — the same hierarchy the product name states.
 
 Which one appears is a decision, not a convenience:
 
-- `static/img/logomark.png` — the mark alone, **1.544:1**, displayed 44×28 in the icon rail.
-  The rail is 84px of chrome; it gets the mark and no words.
+- `static/img/logomark.png` — the mark alone, **1.544:1**, displayed 28×18 next to the
+  wordtext "BernoulliPay" at the top of the nav rail. The wordtext drops away only at the
+  narrowest, icon-only rail (below 480px) — everywhere wider, the mark keeps its words.
 - `static/img/wordmark.png` — the mark above the words "BernoulliPay", **0.946:1**, displayed
   140×148 on the login card. The login screen is the one surface with room for the name and a
   reason to say it, so it is the one surface that carries the full lockup.
@@ -378,9 +382,9 @@ Which one appears is a decision, not a convenience:
 
 ### Production notes
 
-Both ship from the team's renders (`bernoulli-pay-logo-apenas.png`,
-`bernoulli-pay-logo-mais-texto.png`), trimmed to their alpha bounds and resized to delivery
-size. The ink is then normalised to exactly `#009E8E`.
+Both ship from the team's renders (`logos/bernoulli-pay-logo-apenas.png`,
+`logos/bernoulli-pay-logo-mais-texto.png`), trimmed to their alpha bounds and resized to
+delivery size. The ink is then normalised to exactly `#009E8E`.
 
 **The order matters.** Normalising the colour *before* resizing lets the resampling blend the
 flat ink and leaves it a step off the token — measured at `#009d8d` on the first attempt.
@@ -410,7 +414,7 @@ validated categorical palette for data.
 
 ### Primary
 - **Verde Bernoulli** (`brand`): the institution's colour and the product's only identity hue.
-  It is the ink of the supplied logomark, paints the 4px active navigation indicator, strokes the trend
+  It is the ink of the supplied logomark, paints the 3px active navigation indicator, strokes the trend
   chart at 2px and fades its area gradient from 12% to 0, and fills the first categorical slot.
   It is never set as text on a light surface.
 - **Verde Ink** (`brand-ink`): the readable step of the same green. Links, the positive trend
@@ -478,6 +482,28 @@ the pair, and never put white text on a saturated fill.
 A ninth series does not wrap around to slot 1; it means the chart needs rethinking. The
 validation that earned these eight values only holds for the order they are declared in.
 
+### Dark theme
+
+Applied by an explicit `[data-theme="dark"]` on `<html>`, set before first paint by an inline
+script in `base.html` so there is no flash and no second copy of the block under
+`prefers-color-scheme`. The toggle lives in the nav footer (moon/sun icon) and the choice
+persists in `localStorage`.
+
+The theme re-points the same semantic names rather than inventing a second vocabulary — a
+component never names a theme, only a semantic token. Ground inverts (surface `#121212`,
+container `#1b1b1b`, inset `#151515`, keeping the same three-step separation as light) and the
+chromatic scale flips role, not meaning: each colour's 50-tint becomes a deep desaturated
+ground and its 700-ink becomes a light hue, individually re-verified at ≥4.5:1 against the tint
+it sits on. Verde Bernoulli is lifted to `#00b8a5` (500) with `#4dd6c5` (700, 8.4:1 on the
+brand-50 ground) so it still reads as the identity colour rather than washing out on a dark
+surface; hairlines flip from black alpha to white alpha, since a black hairline is invisible on
+a dark ground; and shadows deepen, because a 6%-black shadow does not read on `#121212`.
+
+**The One Semantic Layer Rule.** Dark mode is a re-pointed token layer, not a parallel design
+system. A new component references the same semantic custom properties the light theme uses
+(`--bg-container`, `--text-primary`, …) and gets both themes for free; it never branches on
+`[data-theme]` directly or hard-codes a dark-mode-only value.
+
 ## Typography
 
 **Display Font:** IBM Plex Sans (variable `wght` 100–700, self-hosted `.woff2`, preloaded,
@@ -544,8 +570,8 @@ borrowed for one.
 
 ## Layout
 
-A three-column fixed shell at full height, defined once in `base.html` and never overridden:
-an 84px icon navigation rail, a 280px sidebar carrying per-unit net totals, and a flexible main
+A two-column fixed shell at full height, defined once in `base.html` and never overridden: a
+nav rail carrying the logomark, the section links and the account footer, and a flexible main
 column. The main column holds a single white card (12px radius) that fills the viewport height
 and scrolls internally — the page itself never scrolls. Content inside the card sits on a
 `--gutter` custom property (20px desktop, 14px below 1024px) so the topbar and body share one
@@ -554,17 +580,19 @@ horizontal rhythm, with 48px of bottom breathing room.
 Spacing is a 4px-based rhythm used at 4 / 8 / 12 / 16 / 24: 24px between stacked sections
 (`.stack`, card bottom margin, page-header margin), 16px of card padding, 12px of table cell
 padding, 8px between adjacent controls. Grids are auto-fitting rather than fixed-column —
-metric tiles at `minmax(180px, 1fr)`, form fields at `minmax(220px, 1fr)` — so wide monitors
-fill out instead of leaving a dead gutter.
+metric tiles at `minmax(180px, 1fr)` (`minmax(150px, 1fr)` below 640px, where two 180px tiles
+plus their grid gap no longer fit a phone-width card), form fields at `minmax(220px, 1fr)` — so
+wide monitors fill out instead of leaving a dead gutter.
 
-**Responsive behaviour.** One real breakpoint at 1024px and a minor one at 640px. Below 1024px
-the sidebar leaves the flow and becomes a fixed overlay drawer (`min(300px, 86vw)`), sliding in
-over 220ms on a `cubic-bezier(.22, 1, .36, 1)` curve behind a 40%-black backdrop; it closes on
-Escape, on backdrop click, and returns focus to the toggle. The nav rail narrows to 64px, the
-gutter tightens, and touch targets grow rather than shrink — icon buttons go 32px → 40px and
-small buttons regain padding, because both sat under the 24px minimum once padding collapsed.
-Below 640px only the page title shrinks. The desktop sidebar preference is persisted in
-`localStorage`, and deliberately not applied at the drawer breakpoint.
+**Responsive behaviour.** Three breakpoints, each earning its keep. Below 1024px the nav rail
+narrows from 240px to 200px, the gutter tightens, and touch targets grow rather than shrink —
+icon buttons go 32px → 40px and small buttons regain padding, because both sat under the 24px
+minimum once padding collapsed. Below 640px the page title shrinks and metric tiles drop their
+minimum width, per above. Below 480px the rail drops its text — logo wordtext, item labels,
+account name — down to a 64px icon-only strip, because a labelled 200px rail plus a data table
+does not fit a phone screen with anything left to read; every icon-only link keeps its label as
+an `aria-label` so nothing loses its accessible name. There is no drawer, no overlay and no
+per-viewport layout preference in `localStorage` — the rail is always present, just narrower.
 
 **Motion.** Near-zero: a 150ms background fade on buttons and the dropzone, a 200ms chevron
 rotation, the 220ms drawer slide. Under `prefers-reduced-motion` the drawer animation and
